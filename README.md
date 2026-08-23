@@ -9,14 +9,15 @@ Interactive wrapper around the aircrack-ng suite. Automates the manual airmon-ng
 
 Maintained by Dr-Fractures.
 
-##What it does
-Interface select — lists wireless interfaces, optionally kills conflicting network processes (NetworkManager, wpa_supplicant), enables monitor mode
-Band select — 2.4GHz or 5GHz
-Broad scan — airodump-ng runs in the background; a live ticker prints each newly discovered SSID (with OUI vendor lookup) right in this same window as it's found — no switch to airodump's own full-screen table. Press Enter anytime to stop.
-AP select — lettered table of discovered access points (BSSID / channel / power / ESSID / OUI)
-Focused scan — locks to the target AP's channel; the ticker switches to printing newly discovered client MACs (with OUI) as they're heard. Press Enter anytime to stop.
-Client select — pick a specific connected client or all for broadcast (all clients)
-Deauth — confirms authorization, then runs aireplay-ng -0 0 against the selected target
+## What it does
+
+1. **Interface select** — lists wireless interfaces, optionally kills conflicting network processes (NetworkManager, wpa_supplicant), enables monitor mode
+2. **Band select** — 2.4GHz or 5GHz
+3. **Broad scan** — airodump-ng runs in the background; a live ticker prints each newly discovered SSID (with OUI vendor lookup) right in this same window as it's found — no switch to airodump's own full-      screen table. Press Enter anytime to stop.
+4. **AP select** — lettered table of discovered access points (BSSID / channel / power / ESSID / OUI)
+5. **Focused scan** — locks to the target AP's channel; the ticker switches to printing newly discovered client MACs (with OUI) as they're heard. Press Enter anytime to stop.
+6. **Client select** — pick a specific connected client or all for broadcast (all clients)
+7. **Deauth** — confirms authorization, then runs aireplay-ng -0 0 against the selected target
 
 Selections use single letters (a, b, c...) for fast input, rolls over to numbers after 'z'. (whatever)
 
