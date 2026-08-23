@@ -19,11 +19,36 @@ C_RED='\033[1;38;5;203m'
 C_DIM='\033[2;37m'
 C_WHITE='\033[1;97m'
 C_GREEN='\033[38;5;120m'
+C_LIME='\033[38;5;154m'
 
 info()  { echo -e "${C_TEAL}[*]${C_RESET} $1"; }
 warn()  { echo -e "${C_AMBER}[!]${C_RESET} $1"; }
 err()   { echo -e "${C_RED}[!]${C_RESET} $1" >&2; }
 ok()    { echo -e "${C_GREEN}[+]${C_RESET} $1"; }
+
+# Looks up the vendor for a MAC's OUI (first 3 octets) using local databases —
+# no network lookups, since monitor mode may leave the box without connectivity.
+# Checks nmap's OUI database first, then Wireshark's manuf file, then (n/a).
+oui_lookup() {
+    local mac="$1"
+    local oui_nodash oui_colon vendor=""
+
+    oui_nodash=$(echo "$mac" | tr 'a-z' 'A-Z' | cut -d: -f1-3 | tr -d ':')
+    oui_colon=$(echo "$mac" | tr 'a-z' 'A-Z' | cut -d: -f1-3)
+
+    if [[ -f /usr/share/nmap/nmap-mac-prefixes ]]; then
+        vendor=$(grep -i "^${oui_nodash} " /usr/share/nmap/nmap-mac-prefixes 2>/dev/null | head -n1 | cut -d' ' -f2-)
+    fi
+    if [[ -z "$vendor" && -f /usr/share/wireshark/manuf ]]; then
+        vendor=$(grep -i "^${oui_colon}" /usr/share/wireshark/manuf 2>/dev/null | head -n1 | awk -F'\t' '{print $NF}')
+    fi
+
+    if [[ -z "$vendor" ]]; then
+        echo "(n/a)"
+    else
+        echo "$vendor"
+    fi
+}
 
 banner() {
     echo -e "${C_AMBER}"
@@ -206,7 +231,9 @@ run_scan() {
                         [[ -z "$essid" ]] && continue
                         [[ -n "${seen[$bssid]:-}" ]] && continue
                         seen[$bssid]=1
-                        echo -e "  ${C_RED}${essid}${C_RESET}"
+                        local oui
+                        oui=$(oui_lookup "$bssid")
+                        echo -e "  ${C_WHITE}${essid}${C_RESET}  ${C_LIME}[${oui}]${C_RESET}"
                     done < <(tr -d '\r' < "$csv_file" | sed -n '/^BSSID/,/^$/p' | sed '1d;$d' | sed '/^$/d')
                 elif [[ "$ticker_type" == "client" ]]; then
                     while IFS= read -r line; do
@@ -215,7 +242,9 @@ run_scan() {
                         [[ -z "$sta_mac" ]] && continue
                         [[ -n "${seen[$sta_mac]:-}" ]] && continue
                         seen[$sta_mac]=1
-                        echo -e "  ${C_RED}${sta_mac}${C_RESET}"
+                        local oui
+                        oui=$(oui_lookup "$sta_mac")
+                        echo -e "  ${C_RED}${sta_mac}${C_RESET}  ${C_LIME}[${oui}]${C_RESET}"
                     done < <(tr -d '\r' < "$csv_file" | sed -n '/^Station MAC/,$p' | sed '1d' | sed '/^$/d')
                 fi
             fi
@@ -260,7 +289,7 @@ select_target_ap() {
 
     echo
     info "Discovered access points:"
-    printf "  ${C_DIM}%-4s %-19s %-4s %-5s %s${C_RESET}\n" "#" "BSSID" "CH" "PWR" "ESSID"
+    printf "  ${C_DIM}%-4s %-19s %-4s %-5s %-30s %s${C_RESET}\n" "#" "BSSID" "CH" "PWR" "ESSID" "OUI"
 
     declare -gA AP_MAP_BSSID
     declare -gA AP_MAP_CHANNEL
@@ -268,7 +297,7 @@ select_target_ap() {
 
     local idx=1
     for line in "${ap_lines[@]}"; do
-        local bssid channel power essid label
+        local bssid channel power essid label oui
         bssid=$(echo "$line" | awk -F', ' '{print $1}' | xargs)
         channel=$(echo "$line" | awk -F', ' '{print $4}' | xargs)
         power=$(echo "$line" | awk -F', ' '{print $9}' | xargs)
@@ -276,8 +305,9 @@ select_target_ap() {
 
         [[ -z "$bssid" ]] && continue
 
+        oui=$(oui_lookup "$bssid")
         label=$(idx_to_label "$idx")
-        printf "  ${C_AMBER}%-4s${C_RESET} %-19s %-4s %-5s ${C_RED}%s${C_RESET}\n" "$label" "$bssid" "$channel" "$power" "$essid"
+        printf "  ${C_AMBER}%-4s${C_RESET} %-19s %-4s %-5s ${C_WHITE}%-30s${C_RESET} ${C_LIME}%s${C_RESET}\n" "$label" "$bssid" "$channel" "$power" "$essid" "$oui"
         AP_MAP_BSSID[$label]="$bssid"
         AP_MAP_CHANNEL[$label]="$channel"
         AP_MAP_ESSID[$label]="$essid"
@@ -312,21 +342,22 @@ select_target_client() {
 
     echo
     info "Connected clients (or type 'all' to target the broadcast address / all clients):"
-    printf "  ${C_DIM}%-4s %-19s${C_RESET}\n" "#" "Station MAC"
+    printf "  ${C_DIM}%-4s %-19s %s${C_RESET}\n" "#" "Station MAC" "OUI"
 
     declare -gA CLIENT_MAP
     local idx=1
     local matched=0
     for line in "${station_lines[@]}"; do
-        local sta_mac assoc_bssid label
+        local sta_mac assoc_bssid label oui
         sta_mac=$(echo "$line" | awk -F', ' '{print $1}' | xargs)
         assoc_bssid=$(echo "$line" | awk -F', ' '{print $6}' | xargs)
 
         [[ -z "$sta_mac" ]] && continue
         [[ "$assoc_bssid" != "$AP_BSSID" ]] && continue
 
+        oui=$(oui_lookup "$sta_mac")
         label=$(idx_to_label "$idx")
-        printf "  ${C_AMBER}%-4s${C_RESET} ${C_TEAL_B}%-19s${C_RESET}\n" "$label" "$sta_mac"
+        printf "  ${C_AMBER}%-4s${C_RESET} ${C_TEAL_B}%-19s${C_RESET} ${C_LIME}%s${C_RESET}\n" "$label" "$sta_mac" "$oui"
         CLIENT_MAP[$label]="$sta_mac"
         matched=1
         ((idx++))
@@ -337,11 +368,12 @@ select_target_client() {
     if [[ "$matched" -eq 0 ]]; then
         warn "No stations matched by BSSID field — showing all stations seen during focused scan."
         for line in "${station_lines[@]}"; do
-            local sta_mac label
+            local sta_mac label oui
             sta_mac=$(echo "$line" | awk -F', ' '{print $1}' | xargs)
             [[ -z "$sta_mac" ]] && continue
+            oui=$(oui_lookup "$sta_mac")
             label=$(idx_to_label "$idx")
-            printf "  ${C_AMBER}%-4s${C_RESET} ${C_TEAL_B}%-19s${C_RESET}\n" "$label" "$sta_mac"
+            printf "  ${C_AMBER}%-4s${C_RESET} ${C_TEAL_B}%-19s${C_RESET} ${C_LIME}%s${C_RESET}\n" "$label" "$sta_mac" "$oui"
             CLIENT_MAP[$label]="$sta_mac"
             ((idx++))
         done
