@@ -3,14 +3,20 @@
 Interactive Bash wrapper for the aircrack-ng suite. Walks you through interface selection, monitor mode, band scanning, target selection, a focused scan, and deauth — all from a single script.
 
 
-## What it does
+DOUBLETAP
 
-1. Select a wireless interface and enable monitor mode (choose if you want to kill interfering processes)
-2. Choose a band to scan (2.4GHz or 5GHz)
-3. Run a broad scan and pick a target AP (Enter to stop)
-4. Run a focused scan locked to that AP's channel (Enter to stop)
-5. Select a target client (or broadcast)
-6. Confirm authorization and send a deauth (ctrl +c to stop and stop monitor mode)
+Interactive wrapper around the aircrack-ng suite. Automates the manual airmon-ng → airodump-ng → aireplay-ng workflow into a single guided command, styled as a COD Zombies gumball-machine themed recon tool — without giving up any of aircrack's flexibility.
+
+Maintained by Dr-Fractures.
+
+What it does
+Interface select — lists wireless interfaces, optionally kills conflicting network processes (NetworkManager, wpa_supplicant), enables monitor mode
+Band select — 2.4GHz or 5GHz
+Broad scan — airodump-ng runs in the background; a live ticker prints each newly discovered SSID (with OUI vendor lookup) right in this same window as it's found — no switch to airodump's own full-screen table. Press Enter anytime to stop.
+AP select — lettered table of discovered access points (BSSID / channel / power / ESSID / OUI)
+Focused scan — locks to the target AP's channel; the ticker switches to printing newly discovered client MACs (with OUI) as they're heard. Press Enter anytime to stop.
+Client select — pick a specific connected client or all for broadcast (all clients)
+Deauth — confirms authorization, then runs aireplay-ng -0 0 against the selected target
 
 Selections use single letters (a, b, c...) for fast input, rolls over to numbers after 'z'. (whatever)
 
