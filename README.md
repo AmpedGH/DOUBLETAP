@@ -9,7 +9,7 @@ Interactive wrapper around the aircrack-ng suite. Automates the manual airmon-ng
 
 Maintained by Dr-Fractures.
 
-What it does
+##What it does
 Interface select — lists wireless interfaces, optionally kills conflicting network processes (NetworkManager, wpa_supplicant), enables monitor mode
 Band select — 2.4GHz or 5GHz
 Broad scan — airodump-ng runs in the background; a live ticker prints each newly discovered SSID (with OUI vendor lookup) right in this same window as it's found — no switch to airodump's own full-screen table. Press Enter anytime to stop.
