@@ -10,6 +10,50 @@
 
 set -uo pipefail
 
+# ── Colors ──────────────────────────────────────────────────────────────
+C_RESET='\033[0m'
+C_TEAL='\033[38;5;50m'
+C_TEAL_B='\033[1;38;5;50m'
+C_AMBER='\033[38;5;214m'
+C_RED='\033[1;38;5;203m'
+C_DIM='\033[2;37m'
+C_WHITE='\033[1;97m'
+C_GREEN='\033[38;5;120m'
+
+info()  { echo -e "${C_TEAL}[*]${C_RESET} $1"; }
+warn()  { echo -e "${C_AMBER}[!]${C_RESET} $1"; }
+err()   { echo -e "${C_RED}[!]${C_RESET} $1" >&2; }
+ok()    { echo -e "${C_GREEN}[+]${C_RESET} $1"; }
+
+banner() {
+    echo -e "${C_AMBER}"
+    cat <<'BANNER'
+        .-""""""-.
+      .'  o  o  o  `.
+     /  o    o    o  \
+    |  o   ___   o    |
+    |    .'   `.   o  |
+    |   /  o o  \     |
+    |  | o     o |  o |
+     \  \  o o  /  o /
+      `. `-...-' .'
+        `-.....-'
+BANNER
+    echo -e "${C_RESET}"
+    echo -e "${C_AMBER}"
+    cat <<'LOGO'
+  ____   ____  _   _ ____  _     _____   _____  _    ____
+ |  _ \ / __ \| | | |  _ \| |   | ____| |_   _|/ \  |  _ \
+ | | | | |  | | | | | |_) | |   |  _|     | | / _ \ | |_) |
+ | |_| | |__| | |_| |  _ <| |___| |___    | |/ ___ \|  __/
+ |____/ \____/ \___/|_| \_\_____|_____|   |_/_/   \_\_|
+LOGO
+    echo -e "${C_RESET}"
+    echo -e "${C_TEAL}                 [ GOBBLEGUM WIRELESS RECON ]${C_RESET}"
+    echo -e "${C_DIM}                    Dr-Fractures / AmpedGH${C_RESET}"
+    echo
+}
+
 SCAN_DIR="$(mktemp -d /tmp/doubletap.XXXXXX)"
 IFACE=""
 MONIFACE=""
@@ -19,23 +63,23 @@ KILLED_PROCESSES=0
 
 cleanup() {
     echo
-    echo "[*] Cleaning up..."
+    info "Cleaning up..."
     if [[ -n "$MONIFACE" ]]; then
-        echo "[*] Stopping monitor mode on $MONIFACE..."
+        info "Stopping monitor mode on $MONIFACE..."
         airmon-ng stop "$MONIFACE" >/dev/null 2>&1
     fi
     if [[ "$KILLED_PROCESSES" -eq 1 ]]; then
-        echo "[*] Restoring NetworkManager..."
+        info "Restoring NetworkManager..."
         systemctl restart NetworkManager >/dev/null 2>&1
     fi
     rm -rf "$SCAN_DIR"
-    echo "[*] Done."
+    info "Done."
 }
 trap cleanup EXIT INT TERM
 
 require_root() {
     if [[ $EUID -ne 0 ]]; then
-        echo "[!] This script must be run as root (sudo)." >&2
+        err "This script must be run as root (sudo)."
         exit 1
     fi
 }
@@ -43,7 +87,7 @@ require_root() {
 check_deps() {
     for cmd in airmon-ng airodump-ng aireplay-ng; do
         if ! command -v "$cmd" >/dev/null 2>&1; then
-            echo "[!] Missing dependency: $cmd. Install aircrack-ng suite." >&2
+            err "Missing dependency: $cmd. Install aircrack-ng suite."
             exit 1
         fi
     done
@@ -62,10 +106,10 @@ idx_to_label() {
 }
 
 select_interface() {
-    echo "[*] Available wireless interfaces:"
+    info "Available wireless interfaces:"
     mapfile -t IFACES < <(iw dev 2>/dev/null | awk '$1=="Interface"{print $2}')
     if [[ ${#IFACES[@]} -eq 0 ]]; then
-        echo "[!] No wireless interfaces found." >&2
+        err "No wireless interfaces found."
         exit 1
     fi
 
@@ -73,29 +117,29 @@ select_interface() {
     for i in "${!IFACES[@]}"; do
         local label
         label=$(idx_to_label "$((i+1))")
-        printf "  [%s] %s\n" "$label" "${IFACES[$i]}"
+        printf "  ${C_AMBER}[%s]${C_RESET} %s\n" "$label" "${IFACES[$i]}"
         IFACE_MAP[$label]="${IFACES[$i]}"
     done
 
-    read -rp "Select interface: " sel
+    read -rp "$(echo -e ${C_WHITE}Select interface: ${C_RESET})" sel
     sel="${sel,,}"
     if [[ -z "${IFACE_MAP[$sel]:-}" ]]; then
-        echo "[!] Invalid selection." >&2
+        err "Invalid selection."
         exit 1
     fi
     IFACE="${IFACE_MAP[$sel]}"
-    echo "[*] Selected interface: $IFACE"
+    info "Selected interface: $IFACE"
 
-    read -rp "Kill interfering processes (NetworkManager, wpa_supplicant, etc.)? [y/N]: " kill_choice
+    read -rp "$(echo -e ${C_WHITE}Kill interfering processes \(NetworkManager, wpa_supplicant, etc.\)? [y/N]: ${C_RESET})" kill_choice
     if [[ "$kill_choice" =~ ^[Yy]$ ]]; then
-        echo "[*] Killing interfering processes..."
+        info "Killing interfering processes..."
         airmon-ng check kill >/dev/null 2>&1
         KILLED_PROCESSES=1
     else
-        echo "[*] Skipping process kill. Note: NetworkManager/wpa_supplicant may interfere with monitor mode or cause airodump to keep resetting the channel."
+        warn "Skipping process kill. Note: NetworkManager/wpa_supplicant may interfere with monitor mode or cause airodump to keep resetting the channel."
     fi
 
-    echo "[*] Enabling monitor mode on $IFACE..."
+    info "Enabling monitor mode on $IFACE..."
     airmon-ng start "$IFACE" >/tmp/airmon_start.log 2>&1
 
     # Determine resulting monitor interface name (varies by driver: wlan0mon, wlan0, etc.)
@@ -103,15 +147,15 @@ select_interface() {
     if [[ -z "$MONIFACE" ]]; then
         MONIFACE="${IFACE}mon"
     fi
-    echo "[*] Monitor interface: $MONIFACE"
+    info "Monitor interface: $MONIFACE"
 }
 
 select_band() {
     echo
-    echo "[*] Select band to scan:"
-    echo "  [a] 2.4GHz"
-    echo "  [b] 5GHz"
-    read -rp "Choice: " band_choice
+    info "Select band to scan:"
+    echo -e "  ${C_AMBER}[a]${C_RESET} 2.4GHz"
+    echo -e "  ${C_AMBER}[b]${C_RESET} 5GHz"
+    read -rp "$(echo -e ${C_WHITE}Choice: ${C_RESET})" band_choice
     band_choice="${band_choice,,}"
     if [[ "$band_choice" == "a" ]]; then
         BAND_FLAG="--channel 1,2,3,4,5,6,7,8,9,10,11"
@@ -120,10 +164,10 @@ select_band() {
         BAND_FLAG="--band a"
         BAND_LABEL="5GHz"
     else
-        echo "[!] Invalid choice." >&2
+        err "Invalid choice."
         exit 1
     fi
-    echo "[*] Band selected: $BAND_LABEL"
+    info "Band selected: $BAND_LABEL"
 }
 
 # Runs airodump-ng in background, writes CSV, and waits for the user to press Enter (blank input) to stop
@@ -135,9 +179,9 @@ run_scan() {
     local extra_args=("$@")
 
     echo
-    echo "[*] Starting airodump-ng scan. Press Enter at any time to stop."
+    info "Starting airodump-ng scan. Press Enter at any time to stop."
     if [[ "$mode" == "live" ]]; then
-        echo "[*] Tip: give this at least 15-30 seconds so client devices have a chance to be heard."
+        info "Tip: give this at least 15-30 seconds so client devices have a chance to be heard."
     fi
     rm -f "${prefix}"-*.csv 2>/dev/null
 
@@ -150,7 +194,7 @@ run_scan() {
     local dump_pid=$!
 
     # Blocks until the user presses Enter (blank input = stop)
-    read -rp "[Press Enter to stop] "
+    read -rp "$(echo -e ${C_WHITE}[Press Enter to stop]${C_RESET} )"
     kill "$dump_pid" >/dev/null 2>&1
     wait "$dump_pid" 2>/dev/null
 
@@ -165,7 +209,7 @@ select_target_ap() {
     csv_file=$(ls -t "${prefix}"-*.csv 2>/dev/null | head -n1)
 
     if [[ -z "$csv_file" || ! -f "$csv_file" ]]; then
-        echo "[!] No scan results found." >&2
+        err "No scan results found."
         exit 1
     fi
 
@@ -175,13 +219,13 @@ select_target_ap() {
     mapfile -t ap_lines < <(tr -d '\r' < "$csv_file" | sed -n '/^BSSID/,/^$/p' | sed '1d;$d' | sed '/^$/d')
 
     if [[ ${#ap_lines[@]} -eq 0 ]]; then
-        echo "[!] No access points found in scan." >&2
+        err "No access points found in scan."
         exit 1
     fi
 
     echo
-    echo "[*] Discovered access points:"
-    printf "  %-4s %-19s %-4s %-5s %s\n" "#" "BSSID" "CH" "PWR" "ESSID"
+    info "Discovered access points:"
+    printf "  ${C_DIM}%-4s %-19s %-4s %-5s %s${C_RESET}\n" "#" "BSSID" "CH" "PWR" "ESSID"
 
     declare -gA AP_MAP_BSSID
     declare -gA AP_MAP_CHANNEL
@@ -198,24 +242,24 @@ select_target_ap() {
         [[ -z "$bssid" ]] && continue
 
         label=$(idx_to_label "$idx")
-        printf "  %-4s %-19s %-4s %-5s %s\n" "$label" "$bssid" "$channel" "$power" "$essid"
+        printf "  ${C_AMBER}%-4s${C_RESET} %-19s %-4s %-5s ${C_TEAL_B}%s${C_RESET}\n" "$label" "$bssid" "$channel" "$power" "$essid"
         AP_MAP_BSSID[$label]="$bssid"
         AP_MAP_CHANNEL[$label]="$channel"
         AP_MAP_ESSID[$label]="$essid"
         ((idx++))
     done
 
-    read -rp "Select target AP: " ap_sel
+    read -rp "$(echo -e ${C_WHITE}Select target AP: ${C_RESET})" ap_sel
     ap_sel="${ap_sel,,}"
     if [[ -z "${AP_MAP_BSSID[$ap_sel]:-}" ]]; then
-        echo "[!] Invalid selection." >&2
+        err "Invalid selection."
         exit 1
     fi
 
     AP_BSSID="${AP_MAP_BSSID[$ap_sel]}"
     AP_CHANNEL="${AP_MAP_CHANNEL[$ap_sel]}"
     AP_ESSID="${AP_MAP_ESSID[$ap_sel]}"
-    echo "[*] Target selected: $AP_ESSID ($AP_BSSID) on channel $AP_CHANNEL"
+    info "Target selected: $AP_ESSID ($AP_BSSID) on channel $AP_CHANNEL"
 }
 
 # Parses focused-scan CSV for stations connected to AP_BSSID; sets CLIENT_MAC
@@ -225,15 +269,15 @@ select_target_client() {
     csv_file=$(ls -t "${prefix}"-*.csv 2>/dev/null | head -n1)
 
     if [[ -z "$csv_file" || ! -f "$csv_file" ]]; then
-        echo "[!] No scan results found." >&2
+        err "No scan results found."
         exit 1
     fi
 
     mapfile -t station_lines < <(tr -d '\r' < "$csv_file" | sed -n '/^Station MAC/,$p' | sed '1d' | sed '/^$/d')
 
     echo
-    echo "[*] Connected clients (or type 'all' to target the broadcast address / all clients):"
-    printf "  %-4s %-19s\n" "#" "Station MAC"
+    info "Connected clients (or type 'all' to target the broadcast address / all clients):"
+    printf "  ${C_DIM}%-4s %-19s${C_RESET}\n" "#" "Station MAC"
 
     declare -gA CLIENT_MAP
     local idx=1
@@ -247,7 +291,7 @@ select_target_client() {
         [[ "$assoc_bssid" != "$AP_BSSID" ]] && continue
 
         label=$(idx_to_label "$idx")
-        printf "  %-4s %-19s\n" "$label" "$sta_mac"
+        printf "  ${C_AMBER}%-4s${C_RESET} ${C_TEAL_B}%-19s${C_RESET}\n" "$label" "$sta_mac"
         CLIENT_MAP[$label]="$sta_mac"
         matched=1
         ((idx++))
@@ -256,37 +300,37 @@ select_target_client() {
     # Fallback: strict BSSID-field matching found nothing, but the focused scan was already
     # narrowed to this AP's channel/BSSID via airodump-ng flags, so list all stations seen.
     if [[ "$matched" -eq 0 ]]; then
-        echo "  (no stations matched by BSSID field — showing all stations seen during focused scan)"
+        warn "No stations matched by BSSID field — showing all stations seen during focused scan."
         for line in "${station_lines[@]}"; do
             local sta_mac label
             sta_mac=$(echo "$line" | awk -F', ' '{print $1}' | xargs)
             [[ -z "$sta_mac" ]] && continue
             label=$(idx_to_label "$idx")
-            printf "  %-4s %-19s\n" "$label" "$sta_mac"
+            printf "  ${C_AMBER}%-4s${C_RESET} ${C_TEAL_B}%-19s${C_RESET}\n" "$label" "$sta_mac"
             CLIENT_MAP[$label]="$sta_mac"
             ((idx++))
         done
     fi
 
-    read -rp "Select client (or 'all' for broadcast): " cl_sel
+    read -rp "$(echo -e ${C_WHITE}Select client \(or \'all\' for broadcast\): ${C_RESET})" cl_sel
     cl_sel="${cl_sel,,}"
     if [[ "$cl_sel" == "all" ]]; then
         CLIENT_MAC="FF:FF:FF:FF:FF:FF"
     elif [[ -n "${CLIENT_MAP[$cl_sel]:-}" ]]; then
         CLIENT_MAC="${CLIENT_MAP[$cl_sel]}"
     else
-        echo "[!] Invalid selection." >&2
+        err "Invalid selection."
         exit 1
     fi
-    echo "[*] Client selected: $CLIENT_MAC"
+    ok "Client selected: $CLIENT_MAC"
 }
 
 do_deauth() {
     echo
-    echo "[*] Preparing deauth: AP=$AP_BSSID CH=$AP_CHANNEL Client=$CLIENT_MAC"
-    read -rp "Confirm you are authorized to test this network. Type 'yes' to proceed: " confirm
+    info "Preparing deauth: AP=$AP_BSSID CH=$AP_CHANNEL Client=$CLIENT_MAC"
+    read -rp "$(echo -e ${C_RED}Confirm you are authorized to test this network. Type \'yes\' to proceed: ${C_RESET})" confirm
     if [[ "$confirm" != "yes" ]]; then
-        echo "[*] Aborted."
+        warn "Aborted."
         return
     fi
 
@@ -300,6 +344,7 @@ do_deauth() {
 }
 
 main() {
+    banner
     require_root
     check_deps
     select_interface
@@ -311,7 +356,7 @@ main() {
 
     # Phase 2: focused scan on target channel (live — output visible)
     echo
-    echo "[*] Locking to channel $AP_CHANNEL for focused scan on $AP_ESSID..."
+    info "Locking to channel $AP_CHANNEL for focused scan on $AP_ESSID..."
     run_scan "$FOCUS_PREFIX" live --bssid "$AP_BSSID" --channel "$AP_CHANNEL"
     select_target_client "$FOCUS_PREFIX"
 
