@@ -42,15 +42,13 @@ BANNER
     echo -e "${C_RESET}"
     echo -e "${C_AMBER}"
     cat <<'LOGO'
-  ____   ____  _   _ ____  _     _____   _____  _    ____
- |  _ \ / __ \| | | |  _ \| |   | ____| |_   _|/ \  |  _ \
- | | | | |  | | | | | |_) | |   |  _|     | | / _ \ | |_) |
- | |_| | |__| | |_| |  _ <| |___| |___    | |/ ___ \|  __/
- |____/ \____/ \___/|_| \_\_____|_____|   |_/_/   \_\_|
+ ___   ___  _   _ ___ _    ___ _____ _   ___
+|   \ / _ \| | | | _ ) |  | __|_   _/_\ | _ \
+| |) | (_) | |_| | _ \ |__| _|  | |/ _ \|  _/
+|___/ \___/ \___/|___/____|___| |_/_/ \_\_|
 LOGO
     echo -e "${C_RESET}"
     echo -e "${C_TEAL}                 [ GOBBLEGUM WIRELESS RECON ]${C_RESET}"
-    echo -e "${C_DIM}                    Dr-Fractures / AmpedGH${C_RESET}"
     echo
 }
 
@@ -192,11 +190,43 @@ run_scan() {
             >/tmp/airodump_scan.log 2>&1 &
     fi
     local dump_pid=$!
+    local ticker_pid=""
+
+    # Quiet mode: instead of switching over to airodump-ng's own full-screen table,
+    # poll the CSV it's writing and print each newly discovered SSID as its own line,
+    # right here in this same window, as it's found.
+    if [[ "$mode" == "quiet" ]]; then
+        (
+            declare -A seen
+            while true; do
+                local csv_file
+                csv_file=$(ls -t "${prefix}"-*.csv 2>/dev/null | head -n1)
+                if [[ -n "$csv_file" && -f "$csv_file" ]]; then
+                    while IFS= read -r line; do
+                        local bssid essid
+                        bssid=$(echo "$line" | awk -F', ' '{print $1}' | xargs)
+                        essid=$(echo "$line" | awk -F', ' '{print $14}' | xargs)
+                        [[ -z "$bssid" ]] && continue
+                        [[ -n "${seen[$bssid]:-}" ]] && continue
+                        seen[$bssid]=1
+                        [[ -z "$essid" ]] && essid="<hidden>"
+                        echo -e "  ${C_RED}${essid}${C_RESET}"
+                    done < <(tr -d '\r' < "$csv_file" | sed -n '/^BSSID/,/^$/p' | sed '1d;$d' | sed '/^$/d')
+                fi
+                sleep 2
+            done
+        ) &
+        ticker_pid=$!
+    fi
 
     # Blocks until the user presses Enter (blank input = stop)
     read -rp "$(echo -e ${C_WHITE}[Press Enter to stop]${C_RESET} )"
     kill "$dump_pid" >/dev/null 2>&1
     wait "$dump_pid" 2>/dev/null
+    if [[ -n "$ticker_pid" ]]; then
+        kill "$ticker_pid" >/dev/null 2>&1
+        wait "$ticker_pid" 2>/dev/null
+    fi
 
     # Give airodump a moment to flush the CSV file
     sleep 1
@@ -242,7 +272,7 @@ select_target_ap() {
         [[ -z "$bssid" ]] && continue
 
         label=$(idx_to_label "$idx")
-        printf "  ${C_AMBER}%-4s${C_RESET} %-19s %-4s %-5s ${C_TEAL_B}%s${C_RESET}\n" "$label" "$bssid" "$channel" "$power" "$essid"
+        printf "  ${C_AMBER}%-4s${C_RESET} %-19s %-4s %-5s ${C_RED}%s${C_RESET}\n" "$label" "$bssid" "$channel" "$power" "$essid"
         AP_MAP_BSSID[$label]="$bssid"
         AP_MAP_CHANNEL[$label]="$channel"
         AP_MAP_ESSID[$label]="$essid"
