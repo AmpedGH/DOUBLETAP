@@ -168,40 +168,36 @@ select_band() {
     info "Band selected: $BAND_LABEL"
 }
 
-# Runs airodump-ng in background, writes CSV, and waits for the user to press Enter (blank input) to stop
-# $1 = prefix, $2 = "quiet" or "live", remaining args = extra airodump-ng args
+# Runs airodump-ng in background (always with its own screen output suppressed), writes CSV,
+# and waits for the user to press Enter (blank input) to stop. While running, a background
+# ticker polls the CSV and prints newly discovered items right here, in this same window,
+# instead of switching over to airodump-ng's own full-screen table.
+# $1 = prefix, $2 = ticker type: "ap" (new SSIDs) or "client" (new station MACs)
+# remaining args = extra airodump-ng args
 run_scan() {
     local prefix="$1"
-    local mode="$2"
+    local ticker_type="$2"
     shift 2
     local extra_args=("$@")
 
     echo
     info "Starting airodump-ng scan. Press Enter at any time to stop."
-    if [[ "$mode" == "live" ]]; then
+    if [[ "$ticker_type" == "client" ]]; then
         info "Tip: give this at least 15-30 seconds so client devices have a chance to be heard."
     fi
     rm -f "${prefix}"-*.csv 2>/dev/null
 
-    if [[ "$mode" == "live" ]]; then
-        airodump-ng "${extra_args[@]}" -w "$prefix" --output-format csv "$MONIFACE" &
-    else
-        airodump-ng "${extra_args[@]}" -w "$prefix" --output-format csv "$MONIFACE" \
-            >/tmp/airodump_scan.log 2>&1 &
-    fi
+    airodump-ng "${extra_args[@]}" -w "$prefix" --output-format csv "$MONIFACE" \
+        >/tmp/airodump_scan.log 2>&1 &
     local dump_pid=$!
-    local ticker_pid=""
 
-    # Quiet mode: instead of switching over to airodump-ng's own full-screen table,
-    # poll the CSV it's writing and print each newly discovered SSID as its own line,
-    # right here in this same window, as it's found.
-    if [[ "$mode" == "quiet" ]]; then
-        (
-            declare -A seen
-            while true; do
-                local csv_file
-                csv_file=$(ls -t "${prefix}"-*.csv 2>/dev/null | head -n1)
-                if [[ -n "$csv_file" && -f "$csv_file" ]]; then
+    (
+        declare -A seen
+        while true; do
+            local csv_file
+            csv_file=$(ls -t "${prefix}"-*.csv 2>/dev/null | head -n1)
+            if [[ -n "$csv_file" && -f "$csv_file" ]]; then
+                if [[ "$ticker_type" == "ap" ]]; then
                     while IFS= read -r line; do
                         local bssid essid
                         bssid=$(echo "$line" | awk -F', ' '{print $1}' | xargs)
@@ -212,12 +208,21 @@ run_scan() {
                         seen[$bssid]=1
                         echo -e "  ${C_RED}${essid}${C_RESET}"
                     done < <(tr -d '\r' < "$csv_file" | sed -n '/^BSSID/,/^$/p' | sed '1d;$d' | sed '/^$/d')
+                elif [[ "$ticker_type" == "client" ]]; then
+                    while IFS= read -r line; do
+                        local sta_mac
+                        sta_mac=$(echo "$line" | awk -F', ' '{print $1}' | xargs)
+                        [[ -z "$sta_mac" ]] && continue
+                        [[ -n "${seen[$sta_mac]:-}" ]] && continue
+                        seen[$sta_mac]=1
+                        echo -e "  ${C_RED}${sta_mac}${C_RESET}"
+                    done < <(tr -d '\r' < "$csv_file" | sed -n '/^Station MAC/,$p' | sed '1d' | sed '/^$/d')
                 fi
-                sleep 2
-            done
-        ) &
-        ticker_pid=$!
-    fi
+            fi
+            sleep 2
+        done
+    ) &
+    local ticker_pid=$!
 
     # Print the prompt on its own line (with trailing newline) first, so live ticker
     # output from the background job can never get glued onto the same line as it.
@@ -225,10 +230,8 @@ run_scan() {
     read -r
     kill "$dump_pid" >/dev/null 2>&1
     wait "$dump_pid" 2>/dev/null
-    if [[ -n "$ticker_pid" ]]; then
-        kill "$ticker_pid" >/dev/null 2>&1
-        wait "$ticker_pid" 2>/dev/null
-    fi
+    kill "$ticker_pid" >/dev/null 2>&1
+    wait "$ticker_pid" 2>/dev/null
 
     # Give airodump a moment to flush the CSV file
     sleep 1
@@ -382,14 +385,14 @@ main() {
     select_interface
     select_band
 
-    # Phase 1: broad band scan (quiet — output suppressed)
-    run_scan "$CSV_PREFIX" quiet $BAND_FLAG
+    # Phase 1: broad band scan (SSID ticker)
+    run_scan "$CSV_PREFIX" ap $BAND_FLAG
     select_target_ap "$CSV_PREFIX"
 
-    # Phase 2: focused scan on target channel (live — output visible)
+    # Phase 2: focused scan on target channel (client MAC ticker)
     echo
     info "Locking to channel $AP_CHANNEL for focused scan on $AP_ESSID..."
-    run_scan "$FOCUS_PREFIX" live --bssid "$AP_BSSID" --channel "$AP_CHANNEL"
+    run_scan "$FOCUS_PREFIX" client --bssid "$AP_BSSID" --channel "$AP_CHANNEL"
     select_target_client "$FOCUS_PREFIX"
 
     # Phase 3: deauth
