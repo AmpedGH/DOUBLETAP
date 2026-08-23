@@ -207,9 +207,9 @@ run_scan() {
                         bssid=$(echo "$line" | awk -F', ' '{print $1}' | xargs)
                         essid=$(echo "$line" | awk -F', ' '{print $14}' | xargs)
                         [[ -z "$bssid" ]] && continue
+                        [[ -z "$essid" ]] && continue
                         [[ -n "${seen[$bssid]:-}" ]] && continue
                         seen[$bssid]=1
-                        [[ -z "$essid" ]] && essid="<hidden>"
                         echo -e "  ${C_RED}${essid}${C_RESET}"
                     done < <(tr -d '\r' < "$csv_file" | sed -n '/^BSSID/,/^$/p' | sed '1d;$d' | sed '/^$/d')
                 fi
@@ -219,8 +219,10 @@ run_scan() {
         ticker_pid=$!
     fi
 
-    # Blocks until the user presses Enter (blank input = stop)
-    read -rp "$(echo -e ${C_WHITE}[Press Enter to stop]${C_RESET} )"
+    # Print the prompt on its own line (with trailing newline) first, so live ticker
+    # output from the background job can never get glued onto the same line as it.
+    echo -e "${C_WHITE}[Press Enter to stop]${C_RESET}"
+    read -r
     kill "$dump_pid" >/dev/null 2>&1
     wait "$dump_pid" 2>/dev/null
     if [[ -n "$ticker_pid" ]]; then
