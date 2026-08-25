@@ -1,13 +1,12 @@
 # doubletap
 
-Interactive Bash wrapper for the aircrack-ng suite. Walks you through interface selection, monitor mode, band scanning, target selection, a focused scan, and deauth — all from a single script.
+Interactive Bash wrapper for the aircrack-ng suite. Walks you through interface selection, monitor mode, band scanning, target selection, a focused scan, and deauth. From a single script or whatever.
 
 
 DOUBLETAP
 
-Interactive wrapper around the aircrack-ng suite. Automates the manual airmon-ng → airodump-ng → aireplay-ng workflow into a single guided command, styled as a COD Zombies gumball-machine themed recon tool — without giving up any of aircrack's flexibility.
+Interactive wrapper around the aircrack-ng suite. Automates the manual airmon-ng → airodump-ng → aireplay-ng workflow into a single guided command.
 
-Maintained by Dr-Fractures.
 
 ## What it does
 
